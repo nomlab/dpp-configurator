@@ -1,5 +1,5 @@
 # dpp-configurator
-DPP (evice Provisioning Protocol) を用いた Wi-Fi Easy Connect の configurator を実装するために作成したプログラム集
+DPP (Device Provisioning Protocol) を用いた Wi-Fi Easy Connect の configurator を実装するために作成したプログラム集
 
 ## プログラムリスト
 ### dpp_auth_request
