@@ -4,6 +4,8 @@ DPP (evice Provisioning Protocol) を用いた Wi-Fi Easy Connect の configurat
 ## プログラムリスト
 ### dpp_auth_request
 DPP authentification request パケットを送信するためのプログラム
+なお，DPP authentification request frame のサンプルパケットを
+request_frame_sample.bin に示す．
 
 #### ビルド方法
 ```bash
