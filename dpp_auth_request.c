@@ -158,9 +158,9 @@ void create_dpp_action_frame(uint8_t *frame, size_t *frame_len) {
     ieee80211_header.frame_control[0] = 0xD0; // Management frame subtype (Action)
     ieee80211_header.frame_control[1] = 0x00;
     ieee80211_header.duration = 0;
-    memcpy(ieee80211_header.addr1, "\xff\xff\xff\xff\xff\xff", MAC_ADDR_LEN); // Broadcast address
-    memcpy(ieee80211_header.addr2, "\x00\x11\x22\x33\x44\x55", MAC_ADDR_LEN); // Source address
-    memcpy(ieee80211_header.addr3, "\xff\xff\xff\xff\xff\xff", MAC_ADDR_LEN); // BSSID
+    memcpy(ieee80211_header.addr1, "\x34\x85\x18\x82\x4a\x28", MAC_ADDR_LEN); // Broadcast address
+    memcpy(ieee80211_header.addr2, "\xff\xff\xff\xff\xff\xff", MAC_ADDR_LEN); // Source address
+    memcpy(ieee80211_header.addr3, "\x34\x85\x18\x82\x4a\x28", MAC_ADDR_LEN); // BSSID
     ieee80211_header.sequence_control = 0;
     // DPPアクションフレームの設定
     dpp_action_frame_t dpp_frame;
