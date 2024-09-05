@@ -1,2 +1,4 @@
 *.o
 /data.txt
+/dpp-configurator
+
