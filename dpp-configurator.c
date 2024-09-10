@@ -305,27 +305,24 @@ void debug_dump(char *msg, size_t size, u8 * attr){
     }
     printf("\n");
 }
-void read_hex_file(const char *filename, unsigned char *buffer, size_t *size) {
-    FILE *file = fopen(filename, "r");  // テキストモードでファイルを開く
+size_t read_file_to_byte_array(const char *filename, unsigned char *byte_array) {
+    FILE *file = fopen(filename, "r");
     if (file == NULL) {
         perror("Failed to open file");
-        return;
+        exit(EXIT_FAILURE);
     }
 
-    int value;
-    *size = 0;
-    while (fscanf(file, "0x%x, ", &value) == 1) {  // "0x"形式の16進数を読み込む
-        if (*size < Confsize) {
-            buffer[(*size)++] = (unsigned char)value;  // 16進数値をバイトとして保存
-        } else {
-            printf("Buffer overflow, too many bytes\n");
-            break;
-        }
-    }
+    // ファイルサイズを取得
+    fseek(file, 0, SEEK_END);
+    size_t length = ftell(file);
+    fseek(file, 0, SEEK_SET);
 
+    // バイト配列に読み込み
+    fread(byte_array, 1, length, file);
     fclose(file);
-}
 
+    return length;
+}
 // 関数プロトタイプ
 void create_dpp_auth_req_frame(uint8_t *frame, size_t *frame_len);
 void generate_dpp_elements(uint8_t *public_key, uint8_t *nonce, uint8_t *auth_tag);
@@ -1058,7 +1055,11 @@ void create_dpp_conf_res_frame(uint8_t *frame, size_t *frame_len){
     u8 configObj[Confsize];
     size_t size = 0;
 
-    read_hex_file("data.txt", configObj, &size);
+    const char *filename = "data.json";
+    size_t length = read_file_to_byte_array(filename, configObj);
+
+    debug_print("configObj", length, configObj);
+    printf("%ld", length);
 
     u8 clear_data[124];
     int offset = 0;
