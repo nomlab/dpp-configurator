@@ -17,7 +17,7 @@
 #include <openssl/err.h>
 
 
-
+const uint8_t TARGET_MAC[6] = {0x34, 0x85, 0x18, 0x82, 0x4a, 0x28};// Set target mac addr (ex. {0x00, 0x11, 0x22, 0x33, 0x44, 0x55})
 #define u8 unsigned char
 #define MBEDTLS_AES_BLOCK_SIZE 16
 #define SHA256_MAC_LEN 32
@@ -323,6 +323,14 @@ size_t read_file_to_byte_array(const char *filename, unsigned char *byte_array) 
 
     return length;
 }
+int compare_mac_addr(const uint8_t *packet){
+
+                struct ieee80211_radiotap_header *rtheader = (struct ieee80211_radiotap_header *)packet;
+                int rtap_len = rtheader->it_len;
+
+                ieee80211_header_t *macheader = (ieee80211_header_t *)(packet + rtap_len);
+                return memcmp(macheader-> addr2,TARGET_MAC,6);
+}
 // 関数プロトタイプ
 void create_dpp_auth_req_frame(uint8_t *frame, size_t *frame_len);
 void generate_dpp_elements(uint8_t *public_key, uint8_t *nonce, uint8_t *auth_tag);
@@ -383,9 +391,14 @@ int main(int argc, char*argv[]) {
 
             if (res == 1)
             {
-                
+
+                //struct ieee80211_radiotap_header *rtheader = (struct ieee80211_radiotap_header *)packet0;
+                //int rtap_len = rtheader->it_len;
+
+                //ieee80211_header_t *macheader = (ieee80211_header_t *)(packet0 + rtap_len);
+
                 // パケットを受信した場合、パケットの解析を行う
-                if (header0-> len == 320){
+                if (compare_mac_addr(packet0) == 0 ){
                     // パケットを構造体に格納
                     offset = 86;
                     memcpy(responce_attributes.Attr_ID1, packet0 + offset, ATTR_ID_LEN);
@@ -466,7 +479,7 @@ confirm:
             if (res == 1)
             {
                 // パケットを受信した場合、パケットの解析を行う
-                if (header1-> len == 212){
+                if (compare_mac_addr(packet1)==0){
                     flag += 1;
                     
                     if (flag == 4)
@@ -1050,16 +1063,11 @@ void create_dpp_conf_res_frame(uint8_t *frame, size_t *frame_len){
     memcpy(dpp_response.Attr_len2, "\x8c\x00", 2);
 
     // configObject の用意
-    // Todo: snprintf を使う
-    // 一旦バイト列で
     u8 configObj[Confsize];
     size_t size = 0;
 
-    const char *filename = "data.json";
+    const char *filename = "credential.json";
     size_t length = read_file_to_byte_array(filename, configObj);
-
-    debug_print("configObj", length, configObj);
-    printf("%ld", length);
 
     u8 clear_data[124];
     int offset = 0;
