@@ -391,12 +391,6 @@ int main(int argc, char*argv[]) {
 
             if (res == 1)
             {
-
-                //struct ieee80211_radiotap_header *rtheader = (struct ieee80211_radiotap_header *)packet0;
-                //int rtap_len = rtheader->it_len;
-
-                //ieee80211_header_t *macheader = (ieee80211_header_t *)(packet0 + rtap_len);
-
                 // パケットを受信した場合、パケットの解析を行う
                 if (compare_mac_addr(packet0) == 0 ){
                     // パケットを構造体に格納
