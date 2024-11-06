@@ -22,10 +22,15 @@ A collection of programs created to implement a configurator for Wi-Fi Easy Conn
    ```
 
 3. Run dpp-configurator
-   ```bash
-   $ sudo ./dpp-configurator <NI_NAME>
-   ```
-
+   
+   1. main branch version
+      ```bash
+      $ sudo ./dpp-configurator <NI_NAME> 
+      ```
+   2. dev branch version
+      ```bash
+      $ sudo ./dpp-configurator <NI_NAME> <Public_Key (included in QR code)>
+      ```
 4. Restore the Environment
    ```bash
    $ ./finish.sh <NI_NAME>
