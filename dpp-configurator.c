@@ -134,6 +134,7 @@ uint8_t radiotap_header[] = {
 // 鍵の情報を保持しておく構造体
 typedef struct 
 {
+    char QR_Key[81];
     uint8_t Ini_Proto_Key[64];
     uint8_t Ini_Boot_key[32];
     uint8_t Res_Proto_Key[64];
@@ -340,15 +341,19 @@ void create_dpp_auth_conf_frame(uint8_t *frame, size_t *frame_len);
 void create_dpp_conf_res_frame(uint8_t *frame, size_t *frame_len);
 
 int main(int argc, char*argv[]) {
-    if (argc != 2)
+    if (argc != 3)
     {
-        printf("Usage: %s <interface_name>\n", argv[0]);
+        printf("Usage: %s <interface_name> <Pub_Boot_Key>\n", argv[0]);
         return 1;
     }
     
     char errbuf[PCAP_ERRBUF_SIZE];
     pcap_t *handle;
-    char *dev = argv[1]; // 使用するインターフェイス名
+    char *dev = argv[1];
+    
+    memcpy(auth.QR_Key, argv[2], 81);
+
+     // 使用するインターフェイス名
     // デバイスをオープン
     handle = pcap_open_live(dev, BUFSIZ, 1, 1000, errbuf);
     if (handle == NULL) {
@@ -612,10 +617,10 @@ void create_dpp_auth_req_frame(uint8_t *frame, size_t *frame_len) {
     unsigned char Res_bootkey_hash[SHA256_DIGEST_LENGTH];
     size_t data_len;
     size_t key_len;
-    const char key[81] = "MDkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDIgACCcWFqRtN+f0loEUgGIXDnMXPrjl92u2pV97Ff6DjUD8="; // QRコードに書かれている文字列
+    //const char key[81] = "MDkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDIgACCcWFqRtN+f0loEUgGIXDnMXPrjl92u2pV97Ff6DjUD8="; // QRコードに書かれている文字列
     unsigned char *der_data;
 
-    der_data = (unsigned char *)base64_gen_decode(key, 81, &data_len, base64_table);
+    der_data = (unsigned char *)base64_gen_decode(auth.QR_Key, 81, &data_len, base64_table);
 
     if (sha256_vector(1, (const u8 **)&der_data, &data_len, Res_bootkey_hash))
     {
