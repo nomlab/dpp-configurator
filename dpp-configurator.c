@@ -5,6 +5,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <stdlib.h>
+#include <stdbool.h>
 #include <time.h>
 #include <sys/ioctl.h>
 #include <net/if.h>
@@ -17,7 +18,10 @@
 #include <openssl/err.h>
 
 
-const uint8_t TARGET_MAC[6] = {0x34, 0x85, 0x18, 0x82, 0x4a, 0x28};// Set target mac addr (ex. {0x00, 0x11, 0x22, 0x33, 0x44, 0x55})
+//const uint8_t TARGET_MAC[6] = {0x34, 0x85, 0x18, 0x82, 0x4a, 0x28};// Set target mac addr (ex. {0x00, 0x11, 0x22, 0x33, 0x44, 0x55})
+
+uint8_t TARGET_MAC[6];
+
 #define u8 unsigned char
 #define MBEDTLS_AES_BLOCK_SIZE 16
 #define SHA256_MAC_LEN 32
@@ -332,6 +336,23 @@ int compare_mac_addr(const uint8_t *packet){
                 ieee80211_header_t *macheader = (ieee80211_header_t *)(packet + rtap_len);
                 return memcmp(macheader-> addr2,TARGET_MAC,6);
 }
+
+bool parseMACAddress(const char *macStr, uint8_t *macArray) {
+    int values[6];
+    if (sscanf(macStr, "%x:%x:%x:%x:%x:%x", 
+               &values[0], &values[1], &values[2], 
+               &values[3], &values[4], &values[5]) != 6) {
+        return false; // 解析エラー
+    }
+    
+    for (int i = 0; i < 6; i++) {
+        macArray[i] = (uint8_t) values[i];
+    }
+    
+    return true;
+}
+
+
 // 関数プロトタイプ
 void create_dpp_auth_req_frame(uint8_t *frame, size_t *frame_len);
 void generate_dpp_elements(uint8_t *public_key, uint8_t *nonce, uint8_t *auth_tag);
@@ -341,9 +362,9 @@ void create_dpp_auth_conf_frame(uint8_t *frame, size_t *frame_len);
 void create_dpp_conf_res_frame(uint8_t *frame, size_t *frame_len);
 
 int main(int argc, char*argv[]) {
-    if (argc != 3)
+    if (argc != 4)
     {
-        printf("Usage: %s <interface_name> <Pub_Boot_Key>\n", argv[0]);
+        printf("Usage: %s <interface_name> <Pub_Boot_Key> <MAC_ADDR> \n", argv[0]);
         return 1;
     }
     
@@ -352,6 +373,19 @@ int main(int argc, char*argv[]) {
     char *dev = argv[1];
     
     memcpy(auth.QR_Key, argv[2], 81);
+
+    if (!parseMACAddress(argv[3], TARGET_MAC)) {
+        printf("Invalid MAC address format.\n");
+        return 1;
+    }
+
+    // debug message
+    printf("Parsed MAC Address: ");
+    for (int i = 0; i < 6; i++) {
+        printf("%02X", TARGET_MAC[i]);
+        if (i < 5) printf(":");
+    }
+    printf("\n");
 
      // 使用するインターフェイス名
     // デバイスをオープン
@@ -541,7 +575,7 @@ void create_ieee80211_header(ieee80211_header_t *header, uint16_t sequence_ctrl)
     uint8_t addr2[MAC_ADDR_LEN] = {0x11, 0x22, 0x33, 0x44, 0x55, 0x66}; // Configurator の MACアドレス
     uint8_t addr3[MAC_ADDR_LEN] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff}; 
 
-    memcpy(header->addr1, addr1, MAC_ADDR_LEN);
+    memcpy(header->addr1, TARGET_MAC, MAC_ADDR_LEN);
     memcpy(header->addr2, addr2, MAC_ADDR_LEN);
     memcpy(header->addr3, addr3, MAC_ADDR_LEN);
     header->sequence_control = sequence_ctrl;
