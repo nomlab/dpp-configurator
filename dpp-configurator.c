@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <string.h>
+#include <ctype.h>
 #include <unistd.h>
 #include <stdlib.h>
 #include <stdbool.h>
@@ -21,6 +22,7 @@
 //const uint8_t TARGET_MAC[6] = {0x34, 0x85, 0x18, 0x82, 0x4a, 0x28};// Set target mac addr (ex. {0x00, 0x11, 0x22, 0x33, 0x44, 0x55})
 
 uint8_t TARGET_MAC[6];
+uint8_t SRC_MAC[6];
 
 #define u8 unsigned char
 #define MBEDTLS_AES_BLOCK_SIZE 16
@@ -151,6 +153,7 @@ typedef struct
     uint8_t I_auth[32];
     uint8_t ke[32];
     uint8_t E_nonce[16];
+    uint8_t test_hash[32];
 }auth_t;
 
 auth_t auth; 
@@ -352,6 +355,43 @@ bool parseMACAddress(const char *macStr, uint8_t *macArray) {
     return true;
 }
 
+int debug_compare_mac_addr(const uint8_t *packet){
+                uint8_t macaddr[6];
+
+                struct ieee80211_radiotap_header *rtheader = (struct ieee80211_radiotap_header *)packet;
+                int rtap_len = rtheader->it_len;
+
+                ieee80211_header_t *macheader = (ieee80211_header_t *)(packet + rtap_len);
+                if (!parseMACAddress("48:27:e2:84:59:18",macaddr)) {
+                    printf("Couldnt parse MacAddr\n");
+                }
+                return memcmp(macheader-> addr2,macaddr,6);
+}
+int hex_to_bytes(const char *hex, uint8_t *bytes, size_t bytes_size) {
+    size_t hex_len = strlen(hex);
+
+    // 長さが偶数でなければ不正
+    if (hex_len % 2 != 0) {
+        return -1;
+    }
+
+    // bytes 配列のサイズチェック
+    if (hex_len / 2 > bytes_size) {
+        return -1;
+    }
+
+    for (size_t i = 0; i < hex_len; i += 2) {
+        if (!isxdigit(hex[i]) || !isxdigit(hex[i + 1])) {
+            return -1; // 不正な16進数文字列
+        }
+        // 2文字を1バイトに変換
+        char byte_str[3] = {hex[i], hex[i + 1], '\0'};
+        bytes[i / 2] = (uint8_t)strtol(byte_str, NULL, 16);
+    }
+
+    return 0; // 成功
+}
+
 
 // 関数プロトタイプ
 void create_dpp_auth_req_frame(uint8_t *frame, size_t *frame_len);
@@ -362,16 +402,16 @@ void create_dpp_auth_conf_frame(uint8_t *frame, size_t *frame_len);
 void create_dpp_conf_res_frame(uint8_t *frame, size_t *frame_len);
 
 int main(int argc, char*argv[]) {
-    if (argc != 4)
+    if (argc != 5)
     {
-        printf("Usage: %s <interface_name> <Pub_Boot_Key> <MAC_ADDR> \n", argv[0]);
+        printf("Usage: %s <interface_name> <Pub_Boot_Key> <Enrollee-MAC_ADDR> <Configurator-MAC_ADDR>\n", argv[0]);
         return 1;
     }
-    
+
     char errbuf[PCAP_ERRBUF_SIZE];
     pcap_t *handle;
     char *dev = argv[1];
-    
+
     memcpy(auth.QR_Key, argv[2], 81);
 
     if (!parseMACAddress(argv[3], TARGET_MAC)) {
@@ -379,13 +419,10 @@ int main(int argc, char*argv[]) {
         return 1;
     }
 
-    // debug message
-    printf("Parsed MAC Address: ");
-    for (int i = 0; i < 6; i++) {
-        printf("%02X", TARGET_MAC[i]);
-        if (i < 5) printf(":");
+    if (!parseMACAddress(argv[4], SRC_MAC)) {
+        printf("Invalid MAC address format.\n");
+        return 1;
     }
-    printf("\n");
 
      // 使用するインターフェイス名
     // デバイスをオープン
@@ -413,23 +450,27 @@ int main(int argc, char*argv[]) {
             // 100ミリ秒待つ
             usleep(100 * 1000);
         }
-        
-        
+
         // 返答フレームを待つ
         struct pcap_pkthdr *header0;
         const uint8_t *packet0;
         dpp_auth_response_attributes_t responce_attributes;
 
         int flag = 0;
-        
+
         for (size_t i=0; i < 1000; i++)
+
         {
-        
             int res = pcap_next_ex(handle, &header0, &packet0);
             int offset = 0;
 
             if (res == 1)
             {
+                if (debug_compare_mac_addr(packet0) == 0)
+                {
+                    printf("Get Packet\n");
+                }
+                
                 // パケットを受信した場合、パケットの解析を行う
                 if (compare_mac_addr(packet0) == 0 ){
                     // パケットを構造体に格納
@@ -473,9 +514,7 @@ int main(int argc, char*argv[]) {
                     goto confirm;
 
                 }
-                
             }
-            
         }
 
         // 100ミリ秒待つ
@@ -484,7 +523,6 @@ int main(int argc, char*argv[]) {
 confirm:
     uint8_t frame2[256];
     size_t frame2_len;
-
     create_dpp_auth_conf_frame(frame2, &frame2_len);
 
     printf("start sending Authentication confirm frame \n");
@@ -511,10 +549,10 @@ confirm:
             int offset = 0;
             if (res == 1)
             {
+
                 // パケットを受信した場合、パケットの解析を行う
                 if (compare_mac_addr(packet1)==0){
                     flag += 1;
-                    
                     if (flag == 4)
                     {
                         memcpy(check, packet1 + 95, 2);
@@ -524,8 +562,6 @@ confirm:
                         }
                     }
                 }
-                
-                
             }
         }
 
@@ -576,7 +612,7 @@ void create_ieee80211_header(ieee80211_header_t *header, uint16_t sequence_ctrl)
     uint8_t addr3[MAC_ADDR_LEN] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff}; 
 
     memcpy(header->addr1, TARGET_MAC, MAC_ADDR_LEN);
-    memcpy(header->addr2, addr2, MAC_ADDR_LEN);
+    memcpy(header->addr2, SRC_MAC, MAC_ADDR_LEN);
     memcpy(header->addr3, addr3, MAC_ADDR_LEN);
     header->sequence_control = sequence_ctrl;
 
@@ -988,7 +1024,7 @@ void create_dpp_auth_conf_frame(uint8_t *frame, size_t *frame_len){
     memcpy(dpp_confirm_attributes.DPP_Status, "\x00", 1);
     memcpy(dpp_confirm_attributes.Attr_ID2, "\x02\x10", 2);
     memcpy(dpp_confirm_attributes.Attr_len2, "\x20\x00", 2);
-    memcpy(dpp_confirm_attributes.Res_Boot_Hash, "\x92\x2d\xdd\x7a\x3e\xd6\x9f\x46\x12\x5d\x77\x2b\xbe\x60\x17\xcd\x4e\x03\x87\x0d\xc0\x14\x50\x9e\x38\xb5\x46\x28\xe1\x57\xa8\x7d",32);
+    memcpy(dpp_confirm_attributes.Res_Boot_Hash, auth.Res_Boot_Key_Hash,32);
     //debug_print("Res_boot", 32, dpp_confirm_attributes.Res_Boot_Hash);
 
     // Data wrapped with ke の準備
