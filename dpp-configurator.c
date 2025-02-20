@@ -35,6 +35,12 @@ static const u8 zero[AES_BLOCK_SIZE];
 #define PROT_KEY_LEN 64
 #define DPP_HDR_LEN (4 + 2) /* OUI, OUI Type, Crypto Suite, DPP frame type */
 
+#define IEEE80211_ACTION_FLAG_LEN 24
+#define IEEE80211_CAT_LEN 1
+#define IEEE80211_PUB_ACTION_LEN 1
+
+#define IEEE80211_ACTION_HEADER_LEN (IEEE80211_CAT_LEN + IEEE80211_PUB_ACTION_LEN + DPP_HDR_LEN)
+
 #define IEEE80211_RADIOTAP_TSFT 0
 #define IEEE80211_RADIOTAP_FLAGS 1
 #define IEEE80211_RADIOTAP_RATE 2
@@ -332,11 +338,23 @@ size_t read_file_to_byte_array(const char *filename, unsigned char *byte_array) 
     return length;
 }
 int compare_mac_addr(const uint8_t *packet){
-
+                printf("enter compare_mac_addr\n");
                 struct ieee80211_radiotap_header *rtheader = (struct ieee80211_radiotap_header *)packet;
                 int rtap_len = rtheader->it_len;
 
                 ieee80211_header_t *macheader = (ieee80211_header_t *)(packet + rtap_len);
+                for (size_t i = 0; i < 6; i++)
+                {
+                    printf("%02x", macheader -> addr2[i]);
+                }
+                printf("\n");
+                for (size_t i = 0; i < 6; i++)
+                {
+                    printf("%02x",  TARGET_MAC[i]);
+                }
+                printf("\n");
+
+                
                 return memcmp(macheader-> addr2,TARGET_MAC,6);
 }
 
@@ -390,6 +408,32 @@ int hex_to_bytes(const char *hex, uint8_t *bytes, size_t bytes_size) {
     }
 
     return 0; // 成功
+}
+
+void parse_auth_response_attr(dpp_auth_response_attributes_t *response_attributes, const uint8_t *packet, int offset){
+    memcpy(response_attributes->Attr_ID1, packet + offset, ATTR_ID_LEN);
+    offset += ATTR_ID_LEN;
+    memcpy(response_attributes->Attr_len1, packet + offset, ATTR_ID_LEN_LEN);
+    offset += ATTR_ID_LEN_LEN;
+    memcpy(response_attributes->DPP_Status, packet + offset, 1);
+    offset += 1;
+    memcpy(response_attributes->Attr_ID2, packet + offset, ATTR_ID_LEN);
+    offset += ATTR_ID_LEN;
+    memcpy(response_attributes->Attr_len2, packet + offset, ATTR_ID_LEN_LEN);
+    offset += ATTR_ID_LEN;
+    memcpy(response_attributes->Res_Boot_Hash, packet + offset, BOOT_KEY_LEN);
+    offset += BOOT_KEY_LEN;
+    memcpy(response_attributes->Attr_ID3, packet + offset, ATTR_ID_LEN);
+    offset += ATTR_ID_LEN;
+    memcpy(response_attributes->Attr_len3, packet + offset, ATTR_ID_LEN_LEN);
+    offset += ATTR_ID_LEN_LEN;
+    memcpy(response_attributes->Res_Proto_Key, packet + offset, PROT_KEY_LEN);
+    offset += PROT_KEY_LEN;
+    memcpy(response_attributes->Attr_ID4, packet + offset, ATTR_ID_LEN);
+    offset += ATTR_ID_LEN;
+    memcpy(response_attributes->Attr_len4, packet + offset, ATTR_ID_LEN_LEN);
+    offset += ATTR_ID_LEN_LEN;
+    memcpy(response_attributes->Wrapped_data, packet + offset, 117);
 }
 
 
@@ -466,39 +510,45 @@ int main(int argc, char*argv[]) {
 
             if (res == 1)
             {
-                if (debug_compare_mac_addr(packet0) == 0)
-                {
-                    printf("Get Packet\n");
-                }
-                
+                printf("enter\n");
+                struct ieee80211_radiotap_header *rtheader = (struct ieee80211_radiotap_header *)packet0;
+                int rtap_len = rtheader->it_len;
+                printf("rtap_len: %d\n", rtap_len);
+                int a = compare_mac_addr(packet0);
+                printf("%d\n", a);
+    
                 // パケットを受信した場合、パケットの解析を行う
                 if (compare_mac_addr(packet0) == 0 ){
                     // パケットを構造体に格納
-                    offset = 86;
-                    memcpy(responce_attributes.Attr_ID1, packet0 + offset, ATTR_ID_LEN);
-                    offset += 2;
-                    memcpy(responce_attributes.Attr_len1, packet0 + offset, ATTR_ID_LEN_LEN);
-                    offset += 2;
-                    memcpy(responce_attributes.DPP_Status, packet0 + offset, 1);
-                    offset += 1;
-                    memcpy(responce_attributes.Attr_ID2, packet0 + offset, ATTR_ID_LEN);
-                    offset += ATTR_ID_LEN;
-                    memcpy(responce_attributes.Attr_len2, packet0 + offset, ATTR_ID_LEN_LEN);
-                    offset += ATTR_ID_LEN;
-                    memcpy(responce_attributes.Res_Boot_Hash, packet0 + offset, BOOT_KEY_LEN);
-                    offset += BOOT_KEY_LEN;
-                    memcpy(responce_attributes.Attr_ID3, packet0 + offset, ATTR_ID_LEN);
-                    offset += ATTR_ID_LEN;
-                    memcpy(responce_attributes.Attr_len3, packet0 + offset, ATTR_ID_LEN_LEN);
-                    offset += ATTR_ID_LEN_LEN;
-                    memcpy(responce_attributes.Res_Proto_Key, packet0 + offset, PROT_KEY_LEN);
-                    offset += PROT_KEY_LEN;
-                    memcpy(responce_attributes.Attr_ID4, packet0 + offset, ATTR_ID_LEN);
-                    offset += ATTR_ID_LEN;
-                    memcpy(responce_attributes.Attr_len4, packet0 + offset, ATTR_ID_LEN_LEN);
-                    offset += ATTR_ID_LEN_LEN;
-                    memcpy(responce_attributes.Wrapped_data, packet0 + offset, 117);
-                    offset += 117;
+
+                    offset = rtap_len +IEEE80211_ACTION_FLAG_LEN +IEEE80211_ACTION_HEADER_LEN;
+
+                    parse_auth_response_attr(&responce_attributes, packet0, offset);
+
+                    // memcpy(responce_attributes.Attr_ID1, packet0 + offset, ATTR_ID_LEN);
+                    // offset += 2;
+                    // memcpy(responce_attributes.Attr_len1, packet0 + offset, ATTR_ID_LEN_LEN);
+                    // offset += 2;
+                    // memcpy(responce_attributes.DPP_Status, packet0 + offset, 1);
+                    // offset += 1;
+                    // memcpy(responce_attributes.Attr_ID2, packet0 + offset, ATTR_ID_LEN);
+                    // offset += ATTR_ID_LEN;
+                    // memcpy(responce_attributes.Attr_len2, packet0 + offset, ATTR_ID_LEN_LEN);
+                    // offset += ATTR_ID_LEN;
+                    // memcpy(responce_attributes.Res_Boot_Hash, packet0 + offset, BOOT_KEY_LEN);
+                    // offset += BOOT_KEY_LEN;
+                    // memcpy(responce_attributes.Attr_ID3, packet0 + offset, ATTR_ID_LEN);
+                    // offset += ATTR_ID_LEN;
+                    // memcpy(responce_attributes.Attr_len3, packet0 + offset, ATTR_ID_LEN_LEN);
+                    // offset += ATTR_ID_LEN_LEN;
+                    // memcpy(responce_attributes.Res_Proto_Key, packet0 + offset, PROT_KEY_LEN);
+                    // offset += PROT_KEY_LEN;
+                    // memcpy(responce_attributes.Attr_ID4, packet0 + offset, ATTR_ID_LEN);
+                    // offset += ATTR_ID_LEN;
+                    // memcpy(responce_attributes.Attr_len4, packet0 + offset, ATTR_ID_LEN_LEN);
+                    // offset += ATTR_ID_LEN_LEN;
+                    // memcpy(responce_attributes.Wrapped_data, packet0 + offset, 117);
+                    // offset += 117;
 
                     memcpy(auth.Res_Proto_Key, responce_attributes.Res_Proto_Key, PROT_KEY_LEN);
 
@@ -549,15 +599,14 @@ confirm:
             int offset = 0;
             if (res == 1)
             {
-
                 // パケットを受信した場合、パケットの解析を行う
                 if (compare_mac_addr(packet1)==0){
                     flag += 1;
                     if (flag == 4)
-                    {
-                        memcpy(check, packet1 + 95, 2);
+                    {   
+                        memcpy(check, packet1 + 97, 2);
                         if(memcmp(check, len, sizeof(check)) == 0){
-                            memcpy(wrapped_data, packet1 + 97, 111);
+                            memcpy(wrapped_data, packet1 + 99, 111);
                             break;
                         }
                     }
@@ -829,7 +878,7 @@ void create_dpp_auth_req_frame(uint8_t *frame, size_t *frame_len) {
     EC_KEY_free(Res_Boot_key);
 }
 void unwraped(u8 *Res_prot_key_data, int key_len, u8 *wrapped_data, int wrapped_data_len, u8 *attr_start, int attr_len){
-    //printf("start unwrap\n\n\n");
+    printf("start unwrap\n\n\n");
     // Initiator Protocol Key
     const unsigned char Ini_key_data[] = {
         0x00, 0xa8, 0x7d, 0xe9, 0xaf, 0xbb, 0x40, 0x6c, 0x96,
@@ -840,6 +889,12 @@ void unwraped(u8 *Res_prot_key_data, int key_len, u8 *wrapped_data, int wrapped_
     size_t Ini_key_len = sizeof(Ini_key_data);
     EC_KEY *Ini_key = NULL;
     Ini_key = create_ec_key_from_private_key_bytes(Ini_key_data, Ini_key_len);
+
+    if (EC_KEY_check_key(Ini_key) == 0){
+        printf("Invalid Ini_key\n");
+    }
+
+
     // 公開鍵のバイト列へのエンコード
      unsigned char *Ini_pub_key_bytes = NULL; // Initiator public key
      size_t pub_key_len = 0;
@@ -853,13 +908,30 @@ void unwraped(u8 *Res_prot_key_data, int key_len, u8 *wrapped_data, int wrapped_
     buf[0] = 0x04;
     memcpy(buf +1 , Res_prot_key_data, key_len);
     
+    printf("start create Res_Prot_Key\n");
+    printf("length: %d\n",key_len );
+    printf("Public key (buf):");
+    for (size_t i = 0; i < key_len+1; i++)
+    {
+        printf("%02x ", buf[i]);
+    }
+    printf("\n");
+    
+
     Res_Prot_Key = convert_bytes_to_EC_KEY(buf, key_len + 1);
+
+     if (EC_KEY_check_key(Res_Prot_Key) == 0){
+        printf("Res_Prot_Key\n");
+    }
+
+    printf("finish create Res_Proto_key\n");
 
     // 共通秘密 Nx の計算
     u8 *secret = NULL;
     size_t secret_len = compute_ecdh_secret(Ini_key, Res_Prot_Key, &secret);
     memcpy(auth.N_x, secret, secret_len);
 
+    printf("finish create N_x\n");
     // HKDFで導出するキーの長さ（例：32バイト = 256ビット）
     size_t out_len = 32;
     unsigned char out_key[out_len];
@@ -868,6 +940,7 @@ void unwraped(u8 *Res_prot_key_data, int key_len, u8 *wrapped_data, int wrapped_
     // HKDFを使用してk2を導出
     derive_key_with_hkdf(secret, secret_len, out_key, out_len, info);
 
+    printf("finish create k2\n");
     //OUI, OUI Type, Crypto Suite, DPP frame Type
     const u8 *addr[2];
     size_t len[2];
