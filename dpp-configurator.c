@@ -55,6 +55,8 @@ static const u8 zero[AES_BLOCK_SIZE];
 #define IEEE80211_RADIOTAP_NS 29
 #define IEEE80211_RADIOTAP_EXT 31
 #define Confsize 100
+u8 configObj[Confsize];
+size_t config_length = 0;
 
 static const char base64_table[65] =
 	"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -466,13 +468,18 @@ int main(int argc, char*argv[]) {
         fprintf(stderr, "Couldn't open device %s: %s\n", dev, errbuf);
         return 2;
     }
+
+    const char *filename = "credential.json";
+    config_length = read_file_to_byte_array(filename, configObj);
+
+
     // DPPアクションフレームを作成
     uint8_t frame[256];
     memset(frame, 0, 256);
 
     size_t frame_len;
     create_dpp_auth_req_frame(frame, &frame_len);
-    printf("start sending authentication request frame \n");
+    //printf("start sending authentication request frame \n");
     // フレームを送信
     while (1) {
         for (size_t i = 0; i < 1; i++)
@@ -521,7 +528,7 @@ int main(int argc, char*argv[]) {
                     unwraped(responce_attributes.Res_Proto_Key, PROT_KEY_LEN, responce_attributes.Wrapped_data, 117, buf, attr_len);
 
 
-                    printf("finish receving response frame\n");
+                    //printf("finish receving response frame\n");
                     goto confirm;
 
                 }
@@ -536,7 +543,7 @@ confirm:
     size_t frame2_len;
     create_dpp_auth_conf_frame(frame2, &frame2_len);
 
-    printf("start sending Authentication confirm frame \n");
+    //printf("start sending Authentication confirm frame \n");
 
     if (pcap_sendpacket(handle, frame2, frame2_len) != 0) {
         fprintf(stderr, "Error sending the packet: %s\n", pcap_geterr(handle));
@@ -605,7 +612,7 @@ confirm:
     create_dpp_conf_res_frame(frame3, &frame3_len);
     
     // configuration response frame を送信
-    printf("start sending Configuration Response frame \n");
+    //printf("start sending Configuration Response frame \n");
 
     if (pcap_sendpacket(handle, frame3, frame3_len) != 0) {
         fprintf(stderr, "Error sending the packet: %s\n", pcap_geterr(handle));
@@ -797,11 +804,11 @@ void create_dpp_auth_req_frame(uint8_t *frame, size_t *frame_len) {
     clear_data_len += 4;
     memcpy(clear_data + clear_data_len, I_capabilities, I_capabilities_len);
     clear_data_len += I_capabilities_len;
-    printf("Clear Data: ");
-    for (size_t i = 0; i < clear_data_len; i++) {
-        printf("%02x", clear_data[i]);
-    }
-    printf("\n");
+    // printf("Clear Data: ");
+    // for (size_t i = 0; i < clear_data_len; i++) {
+    //     printf("%02x", clear_data[i]);
+    // }
+    // printf("\n");
     
     // AES-SIV暗号化
     aes_siv_encrypt(out_key, out_len, clear_data,clear_data_len , 2, addr, len, wrappeddata);
@@ -843,7 +850,7 @@ void create_dpp_auth_req_frame(uint8_t *frame, size_t *frame_len) {
     EC_KEY_free(Res_Boot_key);
 }
 void unwraped(u8 *Res_prot_key_data, int key_len, u8 *wrapped_data, int wrapped_data_len, u8 *attr_start, int attr_len){
-    printf("start unwrap\n\n\n");
+    //printf("start unwrap\n\n\n");
     // Initiator Protocol Key
     const unsigned char Ini_key_data[] = {
         0x00, 0xa8, 0x7d, 0xe9, 0xaf, 0xbb, 0x40, 0x6c, 0x96,
@@ -1157,11 +1164,11 @@ void create_dpp_conf_res_frame(uint8_t *frame, size_t *frame_len){
     memcpy(dpp_response.Attr_len2, "\x8c\x00", 2);
 
     // configObject の用意
-    u8 configObj[Confsize];
-    size_t size = 0;
+    // u8 configObj[Confsize];
+    // size_t size = 0;
 
-    const char *filename = "credential.json";
-    size_t length = read_file_to_byte_array(filename, configObj);
+    // const char *filename = "credential.json";
+    // size_t length = read_file_to_byte_array(filename, configObj);
 
     u8 clear_data[124];
     int offset = 0;
