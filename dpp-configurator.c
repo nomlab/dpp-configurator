@@ -9,6 +9,7 @@
 #include <stdbool.h>
 #include <time.h>
 #include <sys/ioctl.h>
+#include <sys/file.h>
 #include <net/if.h>
 #include <linux/wireless.h> 
 #include <openssl/aes.h>
@@ -17,7 +18,7 @@
 #include <openssl/evp.h>
 #include <openssl/kdf.h>
 #include <openssl/err.h>
-
+struct timespec start_time;
 
 //const uint8_t TARGET_MAC[6] = {0x34, 0x85, 0x18, 0x82, 0x4a, 0x28};// Set target mac addr (ex. {0x00, 0x11, 0x22, 0x33, 0x44, 0x55})
 
@@ -118,9 +119,9 @@ void set_channel_info(uint16_t freq, uint16_t flags) {
     rt_header.channel_flags = flags; // エンディアンを考慮
 }
 void set_timestamp(){
-    struct timespec ts;
-    clock_gettime(CLOCK_REALTIME, &ts);
-    rt_header.tsft = (uint64_t)ts.tv_sec * 1000000 + ts.tv_nsec /1000;
+    struct timespec tm;
+    clock_gettime(CLOCK_REALTIME, &tm);
+    rt_header.tsft = (uint64_t)tm.tv_sec * 1000000 + tm.tv_nsec /1000;
 }
 void set_flags(uint8_t flags){
     rt_header.flags = flags;
@@ -135,9 +136,9 @@ void set_antsignal(uint8_t signal){
     rt_header.db_antsignal = signal;
 }
 void set_ts(){
-    struct timespec ts;
-    clock_gettime(CLOCK_REALTIME, &ts);
-    rt_header.ts2 = (uint64_t)ts.tv_sec * 1000000 + ts.tv_nsec /1000;
+    struct timespec tm;
+    clock_gettime(CLOCK_REALTIME, &tm);
+    rt_header.ts2 = (uint64_t)tm.tv_sec * 1000000 + tm.tv_nsec /1000;
 }
 
 
@@ -438,7 +439,27 @@ int gen_i_auth(u8 *i_auth);
 void create_dpp_auth_conf_frame(uint8_t *frame, size_t *frame_len);
 void create_dpp_conf_res_frame(uint8_t *frame, size_t *frame_len);
 
+long long get_timestamp(){
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+
+    return (long long)ts.tv_sec * 1000000LL + (long long )ts.tv_nsec / 1000LL;
+}
+
+void init_timer(){
+    start_time = (struct timespec){0};
+    start_time.tv_sec = get_timestamp() /1000000LL;
+    start_time.tv_nsec = (get_timestamp() % 10000000LL) * 1000LL;
+    clock_gettime(CLOCK_MONOTONIC, &start_time);
+}
+
+
+
 int main(int argc, char*argv[]) {
+    init_timer();
+    long long t_start, t_auth_req, t_auth_res, t_auth_conf, t_conf_req[6], t_conf_res;
+    t_start = get_timestamp();
+
     if (argc != 5)
     {
         printf("Usage: %s <interface_name> <Pub_Boot_Key> <Enrollee-MAC_ADDR> <Configurator-MAC_ADDR>\n", argv[0]);
@@ -481,6 +502,19 @@ int main(int argc, char*argv[]) {
     create_dpp_auth_req_frame(frame, &frame_len);
     //printf("start sending authentication request frame \n");
     // フレームを送信
+    // flock をもちいて，ロック
+    int lock_fd = open("./lockfile", O_CREAT | O_RDWR, 0666);
+    if (lock_fd == -1)
+    {
+        printf("cant open file\n");
+        return 1;
+    }
+
+    if(flock(lock_fd, LOCK_EX) == -1){
+        perror("flock");
+        close(lock_fd);
+        return 1;
+    }
     while (1) {
         for (size_t i = 0; i < 1; i++)
         {
@@ -489,8 +523,9 @@ int main(int argc, char*argv[]) {
             pcap_close(handle);
             return 2;
             }
+            t_auth_req=get_timestamp();
             // 100ミリ秒待つ
-            usleep(100 * 1000);
+            //usleep(100 * 1000);
         }
 
         // 返答フレームを待つ
@@ -513,6 +548,7 @@ int main(int argc, char*argv[]) {
     
                 // パケットを受信した場合、パケットの解析を行う
                 if (compare_mac_addr(packet0) == 0 ){
+                    t_auth_res=get_timestamp();
                     // パケットを構造体に格納
 
                     offset = rtap_len +IEEE80211_ACTION_FLAG_LEN +IEEE80211_ACTION_HEADER_LEN;
@@ -536,7 +572,7 @@ int main(int argc, char*argv[]) {
         }
 
         // 100ミリ秒待つ
-        usleep(100 * 1000);
+        //usleep(100 * 1000);
     }
 confirm:
     uint8_t frame2[256];
@@ -550,7 +586,7 @@ confirm:
         pcap_close(handle);
         return 2;
     }
-
+    t_auth_conf = get_timestamp();
 
     struct pcap_pkthdr *header1;
     const uint8_t *packet1;
@@ -560,6 +596,20 @@ confirm:
     uint8_t wrapped_data[112];
     // configuration request frame が 4回届くため、4個目を指定するための flag
     int flag = 0;
+    // // flock をもちいて，ロック
+    // int lock_fd = open("./lockfile", O_CREAT | O_RDWR, 0666);
+    // if (lock_fd == -1)
+    // {
+    //     printf("cant open file\n");
+    //     return 1;
+    // }
+
+    // if(flock(lock_fd, LOCK_EX) == -1){
+    //     perror("flock");
+    //     close(lock_fd);
+    //     return 1;
+    // }
+    
 
         for (size_t i=0; i < 1000; i++)
         {
@@ -572,9 +622,11 @@ confirm:
 
                 // パケットを受信した場合、パケットの解析を行う
                 if (compare_mac_addr(packet1)==0){
+                    t_conf_req[flag] = get_timestamp();
                     offset = conf_req_rtap_len + IEEE80211_ACTION_FLAG_LEN + IEEE80211_GAS_HEADER_LEN + 4;
                     flag += 1;
-                    if (flag == 4)
+                    // flag を1に変更
+                    if (flag == 6)
                     {   
                         memcpy(check, packet1 + offset, 2);
                         if(memcmp(check, len, sizeof(check)) == 0){
@@ -585,8 +637,7 @@ confirm:
                 }
             }
         }
-
-
+    
     // wrapped_data を ke で unwrap
     u8 * unwrapped_ke = NULL;
     size_t unwrapped_ke_len = 0;
@@ -619,7 +670,28 @@ confirm:
         pcap_close(handle);
         return 2;
     }
+    t_conf_res = get_timestamp();
+    flock(lock_fd, LOCK_UN);
     pcap_close(handle);
+
+
+    long long start_usec = (long long)start_time.tv_sec * 1000000LL + (long long)start_time.tv_nsec / 1000LL;
+
+    printf("[TIME STAMP] Start dpp-configurator.c Time: %lld\n", t_start- start_usec);
+    printf("[TIME STAMP] DPP_Authentication_Request Time: %lld\n", t_auth_req - start_usec);
+    printf("[TIME STAMP] DPP_Authentication_Response Time: %lld\n", t_auth_res - start_usec);
+    printf("[TIME STAMP] DPP_Authentication_Confirm Time: %lld\n", t_auth_conf - start_usec);
+    printf("[TIME STAMP] DPP_Configuration_Request First Time: %lld\n", t_conf_req[0] - start_usec);
+    printf("[TIME STAMP] DPP_Configuration_Request Last Time: %lld\n", t_conf_req[5] - start_usec);
+    printf("[TIME STAMP] DPP_Configuration_Response Time: %lld\n", t_conf_res - start_usec);
+
+    printf("[TIME STAMP] diff 1: %lld\n", t_auth_req- t_start);
+    printf("[TIME STAMP] diff 2: %lld\n", t_auth_res - t_auth_req);
+    printf("[TIME STAMP] diff 3: %lld\n", t_auth_conf - t_auth_res);
+    printf("[TIME STAMP] diff 4: %lld\n", t_conf_req[0] - t_auth_conf);
+    printf("[TIME STAMP] conf req diff: %lld\n", t_conf_req[5] - t_conf_req[0]);
+    printf("[TIME STAMP] diff 5: %lld\n", t_conf_res - t_conf_req[5]);
+
     return 0;
 
 }
