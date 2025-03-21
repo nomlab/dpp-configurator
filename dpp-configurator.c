@@ -439,7 +439,7 @@ int gen_i_auth(u8 *i_auth);
 void create_dpp_auth_conf_frame(uint8_t *frame, size_t *frame_len);
 void create_dpp_conf_res_frame(uint8_t *frame, size_t *frame_len);
 
-long long get_timestamp(){
+long long get_timestamp_ms(){
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
 
@@ -448,8 +448,8 @@ long long get_timestamp(){
 
 void init_timer(){
     start_time = (struct timespec){0};
-    start_time.tv_sec = get_timestamp() /1000000LL;
-    start_time.tv_nsec = (get_timestamp() % 10000000LL) * 1000LL;
+    start_time.tv_sec = get_timestamp_ms() /1000000LL;
+    start_time.tv_nsec = (get_timestamp_ms() % 10000000LL) * 1000LL;
     clock_gettime(CLOCK_MONOTONIC, &start_time);
 }
 
@@ -457,8 +457,8 @@ void init_timer(){
 
 int main(int argc, char*argv[]) {
     init_timer();
-    long long t_start, t_auth_req, t_auth_res, t_auth_conf, t_conf_req[6], t_conf_res;
-    t_start = get_timestamp();
+    long long t_start, t_auth_req, t_auth_res, t_auth_conf, t_conf_req, t_conf_res;
+    t_start = get_timestamp_ms();
 
     if (argc != 5)
     {
@@ -523,7 +523,7 @@ int main(int argc, char*argv[]) {
             pcap_close(handle);
             return 2;
             }
-            t_auth_req=get_timestamp();
+            t_auth_req=get_timestamp_ms();
             // 100ミリ秒待つ
             //usleep(100 * 1000);
         }
@@ -548,7 +548,7 @@ int main(int argc, char*argv[]) {
     
                 // パケットを受信した場合、パケットの解析を行う
                 if (compare_mac_addr(packet0) == 0 ){
-                    t_auth_res=get_timestamp();
+                    t_auth_res=get_timestamp_ms();
                     // パケットを構造体に格納
 
                     offset = rtap_len +IEEE80211_ACTION_FLAG_LEN +IEEE80211_ACTION_HEADER_LEN;
@@ -586,7 +586,7 @@ confirm:
         pcap_close(handle);
         return 2;
     }
-    t_auth_conf = get_timestamp();
+    t_auth_conf = get_timestamp_ms();
 
     struct pcap_pkthdr *header1;
     const uint8_t *packet1;
@@ -595,48 +595,52 @@ confirm:
     uint8_t configreq[212];
     uint8_t wrapped_data[112];
     // configuration request frame が 4回届くため、4個目を指定するための flag
-    int flag = 0;
-    // // flock をもちいて，ロック
-    // int lock_fd = open("./lockfile", O_CREAT | O_RDWR, 0666);
-    // if (lock_fd == -1)
-    // {
-    //     printf("cant open file\n");
-    //     return 1;
-    // }
+    int flag = 1;
+    clock_t start;
 
-    // if(flock(lock_fd, LOCK_EX) == -1){
-    //     perror("flock");
-    //     close(lock_fd);
-    //     return 1;
-    // }
+    int packet_len;
+    int conf_offset = 0;
+    u8 conf_packet[1024];
+    long long last_received_time = 0;
+    long long current_time;
     
 
-        for (size_t i=0; i < 1000; i++)
+    while(1)
+    {
+        int res = pcap_next_ex(handle, &header1, &packet1);
+        if (res == 1)
         {
-            int res = pcap_next_ex(handle, &header1, &packet1);
-            int offset = 0;
-            if (res == 1)
-            {
+            current_time = get_timestamp_ms();
+            
+            // パケットを受信した場合、パケットの解析を行う
+            if (compare_mac_addr(packet1)==0){
+                last_received_time = current_time;                
+                
                 struct ieee80211_radiotap_header *conf_req_rtheader = (struct ieee80211_radiotap_header *)packet1;
                 int conf_req_rtap_len = conf_req_rtheader->it_len;
-
-                // パケットを受信した場合、パケットの解析を行う
-                if (compare_mac_addr(packet1)==0){
-                    t_conf_req[flag] = get_timestamp();
-                    offset = conf_req_rtap_len + IEEE80211_ACTION_FLAG_LEN + IEEE80211_GAS_HEADER_LEN + 4;
-                    flag += 1;
-                    // flag を1に変更
-                    if (flag == 6)
-                    {   
-                        memcpy(check, packet1 + offset, 2);
-                        if(memcmp(check, len, sizeof(check)) == 0){
-                            memcpy(wrapped_data, packet1 + offset + 2, 111);
-                            break;
-                        }
-                    }
-                }
+                packet_len = conf_req_rtap_len;
+                conf_offset = conf_req_rtap_len + IEEE80211_ACTION_FLAG_LEN + IEEE80211_GAS_HEADER_LEN + 4;
+                
+                memcpy(conf_packet, packet1, 1000);
             }
+
+            long long interval = current_time - last_received_time;
+            //printf("%f\n", interval);
+            if (last_received_time != 0 && interval >2 )
+            {
+                break;
+            }   
         }
+    }
+    t_conf_req = get_timestamp_ms();
+
+    memcpy(check, conf_packet + conf_offset, 2);
+
+    if(memcmp(check, len, sizeof(check)) != 0){
+        printf("Error\n");
+        return 1;
+    }
+    memcpy(wrapped_data, conf_packet + conf_offset + 2, 111);    
     
     // wrapped_data を ke で unwrap
     u8 * unwrapped_ke = NULL;
@@ -670,7 +674,7 @@ confirm:
         pcap_close(handle);
         return 2;
     }
-    t_conf_res = get_timestamp();
+    t_conf_res = get_timestamp_ms();
     flock(lock_fd, LOCK_UN);
     pcap_close(handle);
 
@@ -681,16 +685,14 @@ confirm:
     printf("[TIME STAMP] DPP_Authentication_Request Time: %lld\n", t_auth_req - start_usec);
     printf("[TIME STAMP] DPP_Authentication_Response Time: %lld\n", t_auth_res - start_usec);
     printf("[TIME STAMP] DPP_Authentication_Confirm Time: %lld\n", t_auth_conf - start_usec);
-    printf("[TIME STAMP] DPP_Configuration_Request First Time: %lld\n", t_conf_req[0] - start_usec);
-    printf("[TIME STAMP] DPP_Configuration_Request Last Time: %lld\n", t_conf_req[5] - start_usec);
+    printf("[TIME STAMP] DPP_Configuration_Request Time: %lld\n", t_conf_req - start_usec);
     printf("[TIME STAMP] DPP_Configuration_Response Time: %lld\n", t_conf_res - start_usec);
 
     printf("[TIME STAMP] diff 1: %lld\n", t_auth_req- t_start);
     printf("[TIME STAMP] diff 2: %lld\n", t_auth_res - t_auth_req);
     printf("[TIME STAMP] diff 3: %lld\n", t_auth_conf - t_auth_res);
-    printf("[TIME STAMP] diff 4: %lld\n", t_conf_req[0] - t_auth_conf);
-    printf("[TIME STAMP] conf req diff: %lld\n", t_conf_req[5] - t_conf_req[0]);
-    printf("[TIME STAMP] diff 5: %lld\n", t_conf_res - t_conf_req[5]);
+    printf("[TIME STAMP] diff 4: %lld\n", t_conf_req - t_auth_conf);
+    printf("[TIME STAMP] diff 5: %lld\n", t_conf_res - t_conf_req);
 
     return 0;
 

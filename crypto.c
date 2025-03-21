@@ -822,7 +822,6 @@ int hmac_sha256_kdf(const u8 *secret, size_t secret_len,
 		if (clen > SHA256_MAC_LEN)
 			clen = SHA256_MAC_LEN;
 		memcpy(out + pos, T, clen);
-        printf("hi\n");
 		pos += clen;
 
 		if (pos == outlen)
