@@ -503,18 +503,18 @@ int main(int argc, char*argv[]) {
     //printf("start sending authentication request frame \n");
     // フレームを送信
     // flock をもちいて，ロック
-    int lock_fd = open("./lockfile", O_CREAT | O_RDWR, 0666);
-    if (lock_fd == -1)
-    {
-        printf("cant open file\n");
-        return 1;
-    }
+    // int lock_fd = open("./lockfile", O_CREAT | O_RDWR, 0666);
+    // if (lock_fd == -1)
+    // {
+    //     printf("cant open file\n");
+    //     return 1;
+    // }
 
-    if(flock(lock_fd, LOCK_EX) == -1){
-        perror("flock");
-        close(lock_fd);
-        return 1;
-    }
+    // if(flock(lock_fd, LOCK_EX) == -1){
+    //     perror("flock");
+    //     close(lock_fd);
+    //     return 1;
+    // }
     while (1) {
         for (size_t i = 0; i < 1; i++)
         {
@@ -675,7 +675,7 @@ confirm:
         return 2;
     }
     t_conf_res = get_timestamp_ms();
-    flock(lock_fd, LOCK_UN);
+    //flock(lock_fd, LOCK_UN);
     pcap_close(handle);
 
 
